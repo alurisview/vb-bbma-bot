@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 from flask import Flask
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "8784306330:AAHFjxL6l4GmSNwZgGu1n_Hgtt1dVEXXIFc"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
