@@ -4,3 +4,4 @@ pandas_ta
 matplotlib
 pillow
 fxcmpy
+ yfinance
