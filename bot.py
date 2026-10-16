@@ -119,6 +119,22 @@ def scan_cmd(message):
     cmd = message.text.lower()
     timeframe = "15m" if "15m" in cmd else ("4h" if "4h" in cmd else "1h")
     
+@bot.message_handler(commands=['start', 'help'])
+def start_cmd(message):
+    help_text = (
+        "🤖 **BBMA Pure Bot** (No Paid API Required)\n\n"
+        "ពាក្យបញ្ជាប្រើប្រាស់៖\n"
+        "• /scan - ស្កេន XAUUSD លើ Timeframe 1H\n"
+        "• /scan_15m - ស្កេន XAUUSD លើ Timeframe 15M\n"
+        "• /scan_4h - ស្កេន XAUUSD លើ Timeframe 4H"
+    )
+    bot.reply_to(message, help_text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['scan', 'scan_15m', 'scan_4h'])
+def scan_cmd(message):
+    cmd = message.text.lower()
+    timeframe = "15m" if "15m" in cmd else ("4h" if "4h" in cmd else "1h")
+    
     bot.send_message(message.chat.id, f"🔍 កំពុងទាញយកទិន្នន័យផ្សារបច្ចុប្បន្ន និងវិភាគ BBMA ({timeframe.upper()})...")
     
     try:
@@ -138,7 +154,7 @@ def scan_cmd(message):
         if signals:
             report += "🚨 **សញ្ញាដែលរកឃើញ:**\n" + "\n".join(signals)
         else:
-            report += "ℹ️ ទីផ្សារកំពុងរត់ធម្មតា រង់ចាំតម្លៃប៉ះតំបន់ Top/Low BB ឬ MA5/10។"
+            report += "ℹ️ ទីផ្សារកំពុងរត់ធម្មតា រង់ចាំតម្លៃប៉ះតំបន់ Top/Low BB ឬ MA5/10。"
             
         bot.send_photo(message.chat.id, photo=chart_img, caption=report, parse_mode="Markdown")
     except Exception as e:
