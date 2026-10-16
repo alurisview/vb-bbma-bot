@@ -28,13 +28,16 @@ def fetch_live_market(timeframe="1h"):
     df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
     return df
 
-# 2. CALCULATE BBMA INDICATORS
+# 2. CALCULATE BBMA INDICATORS (FIXED SAFE COLUMNS)
 def calculate_advanced_bbma(df):
     # Bollinger Bands (20, 2)
     bb = ta.bbands(df['close'], length=20, std=2)
-    df['lower_bb'] = bb['BBL_20_2.0']
-    df['mid_bb']   = bb['BBM_20_2.0']
-    df['upper_bb'] = bb['BBU_20_2.0']
+    
+    # ប្រើប្រាស់ Column Index ស្វ័យប្រវត្តិដើម្បីការពារ Error ឈ្មោះ
+    cols = bb.columns
+    df['lower_bb'] = bb[cols[0]]
+    df['mid_bb']   = bb[cols[1]]
+    df['upper_bb'] = bb[cols[2]]
 
     # Moving Averages (LWMA / WMA 5 & 10)
     df['ma5_high']  = ta.wma(df['high'], length=5)
@@ -82,7 +85,7 @@ def perform_deep_bbma_analysis(df):
 
     return reports, trend, curr['close']
 
-# 4. CHART GENERATOR (Local Matplotlib)
+# 4. CHART GENERATOR
 def generate_chart_image(df):
     plt.figure(figsize=(10, 5))
     df_s = df.tail(45)
@@ -103,22 +106,6 @@ def generate_chart_image(df):
     return buf
 
 # 5. TELEGRAM HANDLERS
-@bot.message_handler(commands=['start', 'help'])
-def start_cmd(message):
-    help_text = (
-        "🤖 **BBMA Pure Bot** (No Paid API Required)\n\n"
-        "ពាក្យបញ្ជាប្រើប្រាស់៖\n"
-        "• /scan - ស្កេន XAUUSD លើ Timeframe 1H\n"
-        "• /scan_15m - ស្កេន XAUUSD លើ Timeframe 15M\n"
-        "• /scan_4h - ស្កេន XAUUSD លើ Timeframe 4H"
-    )
-    bot.reply_to(message, help_text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['scan', 'scan_15m', 'scan_4h'])
-def scan_cmd(message):
-    cmd = message.text.lower()
-    timeframe = "15m" if "15m" in cmd else ("4h" if "4h" in cmd else "1h")
-    
 @bot.message_handler(commands=['start', 'help'])
 def start_cmd(message):
     help_text = (
