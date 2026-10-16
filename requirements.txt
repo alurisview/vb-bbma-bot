@@ -1,2 +1,6 @@
-python-telegram-bot
-flask
+pyTelegramBotAPI
+pandas
+pandas_ta
+yfinance
+matplotlib
+pillow
