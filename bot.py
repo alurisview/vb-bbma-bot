@@ -28,18 +28,15 @@ def fetch_live_market(timeframe="1h"):
     df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
     return df
 
-# 2. CALCULATE BBMA INDICATORS (FIXED SAFE COLUMNS)
+# 2. CALCULATE BBMA INDICATORS (PURE PANDAS SAFE METHOD)
 def calculate_advanced_bbma(df):
-    # Bollinger Bands (20, 2)
-    bb = ta.bbands(df['close'], length=20, std=2)
-    
-    # ប្រើប្រាស់ Column Index ស្វ័យប្រវត្តិដើម្បីការពារ Error ឈ្មោះ
-    cols = bb.columns
-    df['lower_bb'] = bb[cols[0]]
-    df['mid_bb']   = bb[cols[1]]
-    df['upper_bb'] = bb[cols[2]]
+    # Bollinger Bands (20, 2) using pure pandas to avoid any naming errors
+    df['mid_bb'] = df['close'].rolling(window=20).mean()
+    std_dev = df['close'].rolling(window=20).std()
+    df['upper_bb'] = df['mid_bb'] + (std_dev * 2)
+    df['lower_bb'] = df['mid_bb'] - (std_dev * 2)
 
-    # Moving Averages (LWMA / WMA 5 & 10)
+    # Moving Averages (WMA 5 & 10)
     df['ma5_high']  = ta.wma(df['high'], length=5)
     df['ma5_low']   = ta.wma(df['low'], length=5)
     df['ma10_high'] = ta.wma(df['high'], length=10)
@@ -57,31 +54,31 @@ def perform_deep_bbma_analysis(df):
     reports = []
     
     # Trend Context via EMA 50
-    trend = "BULLISH (Trend ឡើង)" if curr['close'] > curr['ema50'] else "BEARISH (Trend ចុះ)"
+    trend = "BULLISH (Uptrend)" if curr['close'] > curr['ema50'] else "BEARISH (Downtrend)"
 
     # Extreme Check
     if prev['ma5_high'] > prev['upper_bb'] and curr['close'] < curr['open']:
-        reports.append("🔴 EXTREME SELL: កម្លាំងទិញអស់ កំពុងត្រៀមបង្កើត MHV Sell។")
+        reports.append("🔴 EXTREME SELL: Buying exhaustion detected, preparing for MHV Sell.")
     elif prev['ma5_low'] < prev['lower_bb'] and curr['close'] > curr['open']:
-        reports.append("🟢 EXTREME BUY: កម្លាំងលក់អស់ កំពុងត្រៀមបង្កើត MHV Buy។")
+        reports.append("🟢 EXTREME BUY: Selling exhaustion detected, preparing for MHV Buy.")
 
     # MHV Check
     if prev2['ma5_high'] > prev2['upper_bb'] and prev['high'] < prev2['high'] and curr['close'] < curr['mid_bb']:
-        reports.append("⚠️ MHV SELL DETECTED: តំបន់បដិសេធតម្លៃខ្ពស់ មានឱកាសរកចំណុច Reentry Sell។")
+        reports.append("⚠️ MHV SELL DETECTED: Price rejection at top, looking for Reentry Sell.")
     elif prev2['ma5_low'] < prev2['lower_bb'] and prev['low'] > prev2['low'] and curr['close'] > curr['mid_bb']:
-        reports.append("⚠️ MHV BUY DETECTED: តំបន់បដិសេធតម្លៃទាប មានឱកាសរកចំណុច Reentry Buy។")
+        reports.append("⚠️ MHV BUY DETECTED: Price rejection at bottom, looking for Reentry Buy.")
 
     # CSAK Check
     if curr['close'] < curr['mid_bb'] and curr['close'] < curr['ma5_low'] and prev['close'] >= prev['mid_bb']:
-        reports.append("🔻 CSAK SELL: ទៀនទិសដៅរឹងមាំបំបែក Mid BB ចុះក្រោម។")
+        reports.append("🔻 CSAK SELL: Strong momentum candle breaking Mid BB downwards.")
     elif curr['close'] > curr['mid_bb'] and curr['close'] > curr['ma5_high'] and prev['close'] <= prev['mid_bb']:
-        reports.append("🔺 CSAK BUY: ទៀនទិសដៅរឹងមាំបំបែក Mid BB ឡើងលើ។")
+        reports.append("🔺 CSAK BUY: Strong momentum candle breaking Mid BB upwards.")
 
     # Reentry Check
     if curr['high'] >= curr['ma5_high'] and curr['close'] < curr['mid_bb']:
-        reports.append("🎯 REENTRY SELL ZONE: តម្លៃតេស្ត MA5/10 High ជាតំបន់ចូល Sell ដែលមានសុវត្ថិភាព។")
+        reports.append("🎯 REENTRY SELL ZONE: Price testing MA5/10 High, safe zone to Sell.")
     elif curr['low'] <= curr['ma5_low'] and curr['close'] > curr['mid_bb']:
-        reports.append("🎯 REENTRY BUY ZONE: តម្លៃតេស្ត MA5/10 Low ជាតំបន់ចូល Buy ដែលមានសុវត្ថិភាព។")
+        reports.append("🎯 REENTRY BUY ZONE: Price testing MA5/10 Low, safe zone to Buy.")
 
     return reports, trend, curr['close']
 
@@ -110,10 +107,10 @@ def generate_chart_image(df):
 def start_cmd(message):
     help_text = (
         "🤖 **BBMA Pure Bot** (No Paid API Required)\n\n"
-        "ពាក្យបញ្ជាប្រើប្រាស់៖\n"
-        "• /scan - ស្កេន XAUUSD លើ Timeframe 1H\n"
-        "• /scan_15m - ស្កេន XAUUSD លើ Timeframe 15M\n"
-        "• /scan_4h - ស្កេន XAUUSD លើ Timeframe 4H"
+        "Available Commands:\n"
+        "• /scan - Scan XAUUSD on Timeframe 1H\n"
+        "• /scan_15m - Scan XAUUSD on Timeframe 15M\n"
+        "• /scan_4h - Scan XAUUSD on Timeframe 4H"
     )
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
@@ -122,12 +119,12 @@ def scan_cmd(message):
     cmd = message.text.lower()
     timeframe = "15m" if "15m" in cmd else ("4h" if "4h" in cmd else "1h")
     
-    bot.send_message(message.chat.id, f"🔍 កំពុងទាញយកទិន្នន័យផ្សារបច្ចុប្បន្ន និងវិភាគ BBMA ({timeframe.upper()})...")
+    bot.send_message(message.chat.id, f"🔍 Fetching live market data and analyzing BBMA ({timeframe.upper()})...")
     
     try:
         df = fetch_live_market(timeframe)
         if df is None or len(df) < 60:
-            bot.send_message(message.chat.id, "❌ ទិន្នន័យមិនគ្រប់គ្រាន់ទេ សូមព្យាយាមម្តងទៀត។")
+            bot.send_message(message.chat.id, "❌ Insufficient market data. Please try again later.")
             return
             
         df = calculate_advanced_bbma(df)
@@ -135,13 +132,13 @@ def scan_cmd(message):
         chart_img = generate_chart_image(df)
         
         report = f"📊 **BBMA Market Analysis ({timeframe.upper()})**\n"
-        report += f"💰 តម្លៃបច្ចុប្បន្ន: `${price:.2f}`\n"
-        report += f"🌐 និន្នាការធំ (EMA 50): {trend}\n\n"
+        report += f"💰 Current Price: `${price:.2f}`\n"
+        report += f"🌐 Major Trend (EMA 50): {trend}\n\n"
         
         if signals:
-            report += "🚨 **សញ្ញាដែលរកឃើញ:**\n" + "\n".join(signals)
+            report += "🚨 **Detected Signals:**\n" + "\n".join(signals)
         else:
-            report += "ℹ️ ទីផ្សារកំពុងរត់ធម្មតា រង់ចាំតម្លៃប៉ះតំបន់ Top/Low BB ឬ MA5/10。"
+            report += "ℹ️ Market is running normally. Waiting for price to reach Top/Low BB or MA5/10 zones."
             
         bot.send_photo(message.chat.id, photo=chart_img, caption=report, parse_mode="Markdown")
     except Exception as e:
