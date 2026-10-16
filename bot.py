@@ -8,16 +8,11 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-# Initialize Telegram Bot Token & Chat ID
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") # Optional: Your chat ID for auto signals
-
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-# Store last sent signals to avoid duplicate spamming
 last_signal_state = {"1h": "", "15m": ""}
 
-# 1. FETCH LIVE MARKET DATA (XAUUSD)
 def fetch_live_market(timeframe="1h"):
     tf_map = {
         "15m": ("15m", "7d"),
@@ -25,17 +20,21 @@ def fetch_live_market(timeframe="1h"):
         "4h": ("1h", "3mo")
     }
     interval, period = tf_map.get(timeframe, ("1h", "1mo"))
-    ticker = yf.Ticker("GC=F")
-    df = ticker.history(period=period, interval=interval)
-    
-    if df.empty:
-        return None
+    try:
+        # ប្រើ XAU=X (Spot Gold) ដើម្បីឱ្យតម្លៃជិតស្និទ្ធនឹង MetaTrader
+        ticker = yf.Ticker("XAU=X")
+        df = ticker.history(period=period, interval=interval)
         
-    df.reset_index(inplace=True)
-    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
-    return df
+        if df.empty:
+            return None
+            
+        df.reset_index(inplace=True)
+        df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
+        return df
+    except Exception as e:
+        print(f"Data fetch error: {e}")
+        return None
 
-# 2. CALCULATE BBMA INDICATORS (PURE PANDAS SAFE METHOD)
 def calculate_advanced_bbma(df):
     df['mid_bb'] = df['close'].rolling(window=20).mean()
     std_dev = df['close'].rolling(window=20).std()
@@ -49,7 +48,6 @@ def calculate_advanced_bbma(df):
     df['ema50']     = ta.ema(df['close'], length=50)
     return df
 
-# 3. DEEP RULE-BASED BBMA ANALYSIS ENGINE
 def perform_deep_bbma_analysis(df):
     curr = df.iloc[-1]
     prev = df.iloc[-2]
@@ -59,28 +57,27 @@ def perform_deep_bbma_analysis(df):
     trend = "BULLISH (Uptrend)" if curr['close'] > curr['ema50'] else "BEARISH (Downtrend)"
 
     if prev['ma5_high'] > prev['upper_bb'] and curr['close'] < curr['open']:
-        reports.append("🔴 EXTREME SELL: Buying exhaustion detected, preparing for MHV Sell.")
+        reports.append("🔴 EXTREME SELL: Buying exhaustion detected.")
     elif prev['ma5_low'] < prev['lower_bb'] and curr['close'] > curr['open']:
-        reports.append("🟢 EXTREME BUY: Selling exhaustion detected, preparing for MHV Buy.")
+        reports.append("🟢 EXTREME BUY: Selling exhaustion detected.")
 
     if prev2['ma5_high'] > prev2['upper_bb'] and prev['high'] < prev2['high'] and curr['close'] < curr['mid_bb']:
-        reports.append("⚠️ MHV SELL DETECTED: Price rejection at top, looking for Reentry Sell.")
+        reports.append("⚠️ MHV SELL DETECTED: Price rejection at top.")
     elif prev2['ma5_low'] < prev2['lower_bb'] and prev['low'] > prev2['low'] and curr['close'] > curr['mid_bb']:
-        reports.append("⚠️ MHV BUY DETECTED: Price rejection at bottom, looking for Reentry Buy.")
+        reports.append("⚠️ MHV BUY DETECTED: Price rejection at bottom.")
 
     if curr['close'] < curr['mid_bb'] and curr['close'] < curr['ma5_low'] and prev['close'] >= prev['mid_bb']:
-        reports.append("🔻 CSAK SELL: Strong momentum candle breaking Mid BB downwards.")
+        reports.append("🔻 CSAK SELL: Strong momentum downwards.")
     elif curr['close'] > curr['mid_bb'] and curr['close'] > curr['ma5_high'] and prev['close'] <= prev['mid_bb']:
-        reports.append("🔺 CSAK BUY: Strong momentum candle breaking Mid BB upwards.")
+        reports.append("🔺 CSAK BUY: Strong momentum upwards.")
 
     if curr['high'] >= curr['ma5_high'] and curr['close'] < curr['mid_bb']:
-        reports.append("🎯 REENTRY SELL ZONE: Price testing MA5/10 High, safe zone to Sell.")
+        reports.append("🎯 REENTRY SELL ZONE: Testing MA5/10 High.")
     elif curr['low'] <= curr['ma5_low'] and curr['close'] > curr['mid_bb']:
-        reports.append("🎯 REENTRY BUY ZONE: Price testing MA5/10 Low, safe zone to Buy.")
+        reports.append("🎯 REENTRY BUY ZONE: Testing MA5/10 Low.")
 
     return reports, trend, curr['close']
 
-# 4. CHART GENERATOR
 def generate_chart_image(df):
     plt.figure(figsize=(10, 5))
     df_s = df.tail(45)
@@ -100,46 +97,14 @@ def generate_chart_image(df):
     plt.close()
     return buf
 
-# 5. BACKGROUND AUTO-SCANNER (Sends signal automatically when detected)
-def background_auto_scanner():
-    while True:
-        try:
-            chat_id = os.getenv("TELEGRAM_CHAT_ID")
-            if chat_id:
-                for tf in ["15m", "1h"]:
-                    df = fetch_live_market(tf)
-                    if df is not None and len(df) >= 60:
-                        df = calculate_advanced_bbma(df)
-                        signals, trend, price = perform_deep_bbma_analysis(df)
-                        
-                        if signals:
-                            signal_key = "".join(signals)
-                            # Send only if new signal appears to avoid spam
-                            if last_signal_state[tf] != signal_key:
-                                last_signal_state[tf] = signal_key
-                                chart_img = generate_chart_image(df)
-                                
-                                report = f"🚨 **AUTO BBMA SIGNAL ({tf.upper()})** 🚨\n"
-                                report += f"💰 Current Price: `${price:.2f}`\n"
-                                report += f"🌐 Major Trend: {trend}\n\n"
-                                report += "📌 **Signals:**\n" + "\n".join(signals)
-                                
-                                bot.send_photo(chat_id, photo=chart_img, caption=report, parse_mode="Markdown")
-            # Scan every 5 minutes
-            time.sleep(300)
-        except Exception as e:
-            print(f"Auto scanner error: {e}")
-            time.sleep(60)
-
-# 6. TELEGRAM HANDLERS
 @bot.message_handler(commands=['start', 'help'])
 def start_cmd(message):
     help_text = (
-        "🤖 **BBMA Auto Signal Bot**\n\n"
+        "🤖 **BBMA Bot Active**\n\n"
         "Commands:\n"
-        "• /scan - Manual scan 1H\n"
-        "• /scan_15m - Manual scan 15M\n"
-        "• /scan_4h - Manual scan 4H"
+        "• /scan - Scan 1H\n"
+        "• /scan_15m - Scan 15M\n"
+        "• /scan_4h - Scan 4H"
     )
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
@@ -148,12 +113,12 @@ def scan_cmd(message):
     cmd = message.text.lower()
     timeframe = "15m" if "15m" in cmd else ("4h" if "4h" in cmd else "1h")
     
-    bot.send_message(message.chat.id, f"🔍 Fetching live market data and analyzing BBMA ({timeframe.upper()})...")
+    bot.send_message(message.chat.id, f"🔍 Analyzing BBMA ({timeframe.upper()})...")
     
     try:
         df = fetch_live_market(timeframe)
         if df is None or len(df) < 60:
-            bot.send_message(message.chat.id, "❌ Insufficient market data. Please try again.")
+            bot.send_message(message.chat.id, "❌ Failed to fetch market data. Try again later.")
             return
             
         df = calculate_advanced_bbma(df)
@@ -165,7 +130,7 @@ def scan_cmd(message):
         report += f"🌐 Major Trend (EMA 50): {trend}\n\n"
         
         if signals:
-            report += "🚨 **Detected Signals:**\n" + "\n".join(signals)
+            report += "🚨 **Signals:**\n" + "\n".join(signals)
         else:
             report += "ℹ️ Market is running normally. Waiting for setup."
             
@@ -174,9 +139,4 @@ def scan_cmd(message):
         bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
 
 if __name__ == "__main__":
-    # Start background auto scanner thread
-    scanner_thread = threading.Thread(target=background_auto_scanner, daemon=True)
-    scanner_thread.start()
-    
-    # Start bot polling
     bot.infinity_polling()
